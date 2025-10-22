@@ -19,6 +19,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: build
+        run: bun run build
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:

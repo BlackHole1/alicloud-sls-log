@@ -8,6 +8,7 @@
   "module": "src/index.ts",
   "scripts": {
     "build": "tsdown",
+    "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "ts-check": "tsc --noEmit"
   },
