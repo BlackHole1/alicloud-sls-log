@@ -11,6 +11,9 @@ export default antfu(
             quotes: "double",
             semi: true,
         },
+        ignores: [
+            "README.md",
+        ],
     },
     {
         files: ["**/*.{json,jsonc,json5}"],
