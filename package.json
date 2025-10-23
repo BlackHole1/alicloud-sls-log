@@ -1,7 +1,7 @@
 {
   "name": "alicloud-sls-log",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Kevin Cui <bh@bugs.cc>",
   "license": "MIT",
   "repository": "git@github.com:BlackHole1/alicloud-sls-log.git",
