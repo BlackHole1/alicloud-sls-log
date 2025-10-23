@@ -1,12 +1,21 @@
+import type { Options as KyOptions } from "ky";
 import type { ParsedUrlQueryInput } from "node:querystring";
 import { createHash, createHmac } from "node:crypto";
 import querystring from "node:querystring";
 import ky from "ky";
 
+export type SafeKyOptions = Omit<KyOptions, "method" | "body" | "headers">;
+
+const DEFAULT_REQUEST_OPTIONS: SafeKyOptions = {
+    timeout: 3000,
+    retry: 2,
+};
+
 export interface RequestConfig {
     endpoint: string;
     accessKeyID: string;
     accessKeySecret: string;
+    globalSafeKyOptions?: SafeKyOptions;
 }
 
 interface RequestOptions {
@@ -16,6 +25,7 @@ interface RequestOptions {
     body?: Uint8Array;
     headers?: Record<string, string>;
     projectName?: string;
+    safeKyOptions?: SafeKyOptions;
 }
 
 export class AliCloudSLSLogError extends Error {
@@ -53,6 +63,9 @@ export class Request {
             method: options.method,
             body: options.body,
             headers,
+            ...DEFAULT_REQUEST_OPTIONS,
+            ...this.config.globalSafeKyOptions,
+            ...options.safeKyOptions,
         });
         const contentType = response.headers.get("content-type") || "";
         if (!contentType.startsWith("application/json")) {

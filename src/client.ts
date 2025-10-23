@@ -1,3 +1,4 @@
+import type { SafeKyOptions } from "./request";
 import type { LogEntity } from "./type";
 import proto from "protobufjs";
 import { Request } from "./request";
@@ -47,6 +48,7 @@ export interface AliCloudSLSLogOption {
     accessKeyID: string;
     accessKeySecret: string;
     endpoint: string;
+    globalSafeKyOptions?: SafeKyOptions;
 }
 
 export class AliCloudSLSLog extends Request {
@@ -54,7 +56,7 @@ export class AliCloudSLSLog extends Request {
         super(config);
     }
 
-    public async putLogs(projectName: string, logstoreName: string, data: LogData): Promise<void> {
+    public async putLogs(projectName: string, logstoreName: string, data: LogData, safeKyOptions?: SafeKyOptions): Promise<void> {
         const payload: Record<string, any> = {
             Logs: data.logs.map((log) => {
                 const { seconds, nanoseconds } = splitTimestamp(log.timestamp);
@@ -93,6 +95,7 @@ export class AliCloudSLSLog extends Request {
             },
             projectName,
             body,
+            safeKyOptions,
         });
     }
 }
