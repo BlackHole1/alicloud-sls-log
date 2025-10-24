@@ -1,14 +1,13 @@
-import type { Options as KyOptions } from "ky";
 import type { ParsedUrlQueryInput } from "node:querystring";
+import type { SafeKyOptions } from "./type";
 import { createHash, createHmac } from "node:crypto";
 import querystring from "node:querystring";
 import ky from "ky";
 
-export type SafeKyOptions = Omit<KyOptions, "method" | "body" | "headers">;
-
 const DEFAULT_REQUEST_OPTIONS: SafeKyOptions = {
     timeout: 3000,
     retry: 2,
+    throwHttpErrors: false,
 };
 
 export interface RequestConfig {
@@ -67,6 +66,7 @@ export class Request {
             ...this.config.globalSafeKyOptions,
             ...options.safeKyOptions,
         });
+
         const contentType = response.headers.get("content-type") || "";
         if (!contentType.startsWith("application/json")) {
             return response.text();

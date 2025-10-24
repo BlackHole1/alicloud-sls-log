@@ -1,5 +1,4 @@
-import type { SafeKyOptions } from "./request";
-import type { LogEntity } from "./type";
+import type { AliCloudSLSLogOption, GetLogsQuery, GetLogsResponse, LogData, SafeKyOptions } from "./type";
 import proto from "protobufjs";
 import { Request } from "./request";
 
@@ -36,21 +35,6 @@ message LogGroupList {
 
 const builder = proto.parse(protoSrc).root;
 const LogGroupProto = builder.lookupType("sls.LogGroup");
-
-export interface LogData {
-    logs: LogEntity[];
-    tags?: Array<Record<string, string>>;
-    topic?: string;
-    source?: string;
-}
-
-export interface AliCloudSLSLogOption {
-    accessKeyID: string;
-    accessKeySecret: string;
-    endpoint: string;
-    globalSafeKyOptions?: SafeKyOptions;
-}
-
 export class AliCloudSLSLog extends Request {
     public constructor(config: AliCloudSLSLogOption) {
         super(config);
@@ -95,6 +79,24 @@ export class AliCloudSLSLog extends Request {
             },
             projectName,
             body,
+            safeKyOptions,
+        });
+    }
+
+    public async getLogs<T extends Record<string, any> = Record<string, any>>(projectName: string, logstoreName: string, query: GetLogsQuery, safeKyOptions?: SafeKyOptions): Promise<GetLogsResponse<T>> {
+        const fromSec = splitTimestamp(query.from).seconds;
+        const toSec = splitTimestamp(query.to).seconds;
+
+        return this.do({
+            method: "GET",
+            path: `/logstores/${logstoreName}`,
+            queries: {
+                type: "log",
+                ...query,
+                from: fromSec,
+                to: toSec,
+            },
+            projectName,
             safeKyOptions,
         });
     }
