@@ -80,6 +80,39 @@ await log.putLogs("my-project", "my-logstore", {
 });
 ```
 
+### `getLogs()`
+
+Get logs from a specific logstore.
+
+```ts
+getLogs(projectName: string, logstoreName: string, query: GetLogsQuery): Promise<GetLogsResponse>
+```
+
+**Parameters:**
+
+- `projectName` - Name of your SLS project
+- `logstoreName` - Name of your logstore
+- `query.from` - Start time in unix timestamp(milliseconds or seconds)
+- `query.to` - End time in unix timestamp(milliseconds or seconds)
+- `query?.query` - Query string
+- `query?.topic` - Log topic
+- `query?.line` - Line number
+- `query?.offset` - Offset
+- `query?.reverse` - Reverse order
+- `query?.powerSql` - PowerSQL mode
+
+**Example:**
+
+```ts
+const logs = await log.getLogs("my-project", "my-logstore", {
+    from: Date.now() - 1000,
+    to: Date.now() + 1000,
+    topic: "user-events",
+});
+```
+
+## Utils
+
 ### `createLog()`
 
 Helper function to create log entities.
