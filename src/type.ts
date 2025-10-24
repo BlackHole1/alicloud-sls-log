@@ -39,3 +39,10 @@ export interface AliCloudSLSLogOption {
     endpoint: string;
     globalSafeKyOptions?: SafeKyOptions;
 }
+
+export interface RequestConfig {
+    endpoint: string;
+    accessKeyID: string;
+    accessKeySecret: string;
+    globalSafeKyOptions?: SafeKyOptions;
+}

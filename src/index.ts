@@ -1,9 +1,7 @@
 export { AliCloudSLSLog } from "./client";
-export type { AliCloudSLSLogOption, LogData } from "./client";
 
-export { AliCloudSLSLogError } from "./request";
-export type { SafeKyOptions } from "./request";
+export { AliCloudSLSLogError, Request } from "./request";
 
-export type { LogEntity } from "./type";
+export type { AliCloudSLSLogOption, GetLogsQuery, GetLogsResponse, LogData, LogEntity, RequestConfig, SafeKyOptions } from "./type";
 
 export { createLog } from "./utils";

@@ -1,5 +1,5 @@
 import type { ParsedUrlQueryInput } from "node:querystring";
-import type { SafeKyOptions } from "./type";
+import type { RequestConfig, SafeKyOptions } from "./type";
 import { createHash, createHmac } from "node:crypto";
 import querystring from "node:querystring";
 import ky from "ky";
@@ -9,13 +9,6 @@ const DEFAULT_REQUEST_OPTIONS: SafeKyOptions = {
     retry: 2,
     throwHttpErrors: false,
 };
-
-export interface RequestConfig {
-    endpoint: string;
-    accessKeyID: string;
-    accessKeySecret: string;
-    globalSafeKyOptions?: SafeKyOptions;
-}
 
 interface RequestOptions {
     method: "POST" | "GET" | "PUT" | "DELETE";
