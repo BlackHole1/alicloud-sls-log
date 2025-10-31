@@ -44,5 +44,6 @@ export interface RequestConfig {
     endpoint: string;
     accessKeyID: string;
     accessKeySecret: string;
+    stsToken?: string;
     globalSafeKyOptions?: SafeKyOptions;
 }
