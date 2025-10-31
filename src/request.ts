@@ -35,6 +35,12 @@ export class Request {
     public constructor(private readonly config: RequestConfig) {
     }
 
+    public updateCredential(accessKeyID: string, accessKeySecret: string, stsToken?: string): void {
+        this.config.accessKeyID = accessKeyID;
+        this.config.accessKeySecret = accessKeySecret;
+        this.config.stsToken = stsToken;
+    }
+
     protected async do(options: RequestOptions): Promise<any> {
         const headers: Record<string, string> = Object.assign({
             "content-type": "application/json",
@@ -42,6 +48,10 @@ export class Request {
             "x-log-apiversion": "0.6.0",
             "x-log-signaturemethod": "hmac-sha1",
         }, options.headers);
+
+        if (this.config.stsToken) {
+            headers["x-acs-security-token"] = this.config.stsToken;
+        }
 
         if (options.body) {
             headers["content-length"] = options.body.length.toString();
