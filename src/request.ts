@@ -17,7 +17,6 @@ interface RequestOptions {
     body?: Uint8Array;
     headers?: Record<string, string>;
     projectName?: string;
-    stsToken?: string;
     safeKyOptions?: SafeKyOptions;
 }
 
