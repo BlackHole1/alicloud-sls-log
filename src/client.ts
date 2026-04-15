@@ -1,4 +1,16 @@
-import type { AliCloudSLSLogOption, GetLogsQuery, GetLogsResponse, LogData, SafeKyOptions } from "./type";
+import type {
+    AliCloudSLSLogOption,
+    CreateMaterializedView,
+    GetLogsQuery,
+    GetLogsResponse,
+    GetLogsV2Query,
+    GetLogsV2Response,
+    GetMaterializedViewResponse,
+    ListMaterializedViewsQuery,
+    ListMaterializedViewsResponse,
+    LogData,
+    SafeKyOptions,
+} from "./type";
 import proto from "protobufjs";
 import { Request } from "./request";
 
@@ -96,6 +108,64 @@ export class AliCloudSLSLog extends Request {
                 from: fromSec,
                 to: toSec,
             },
+            projectName,
+            safeKyOptions,
+        });
+    }
+
+    public async getLogsV2<T extends Record<string, any> = Record<string, any>>(projectName: string, logstoreName: string, query: GetLogsV2Query, safeKyOptions?: SafeKyOptions): Promise<GetLogsV2Response<T>> {
+        const fromSec = splitTimestamp(query.from).seconds;
+        const toSec = splitTimestamp(query.to).seconds;
+
+        return this.do({
+            method: "POST",
+            path: `/logstores/${logstoreName}/logs`,
+            headers: {
+                "accept-encoding": "gzip",
+            },
+            projectName,
+            body: JSON.stringify({
+                ...query,
+                from: fromSec,
+                to: toSec,
+            }),
+            safeKyOptions,
+        });
+    }
+
+    public async createMaterializedView(projectName: string, data: CreateMaterializedView, safeKyOptions?: SafeKyOptions): Promise<void> {
+        await this.do({
+            method: "POST",
+            path: "/materializedviews",
+            projectName,
+            body: JSON.stringify(data),
+            safeKyOptions,
+        });
+    }
+
+    public async listMaterializedViews(projectName: string, query?: ListMaterializedViewsQuery, safeKyOptions?: SafeKyOptions): Promise<ListMaterializedViewsResponse> {
+        return this.do({
+            method: "GET",
+            path: "/materializedviews",
+            queries: query,
+            projectName,
+            safeKyOptions,
+        });
+    }
+
+    public async getMaterializedView(projectName: string, materializedViewName: string, safeKyOptions?: SafeKyOptions): Promise<GetMaterializedViewResponse> {
+        return this.do({
+            method: "GET",
+            path: `/materializedviews/${materializedViewName}`,
+            projectName,
+            safeKyOptions,
+        });
+    }
+
+    public async deleteMaterializedView(projectName: string, materializedViewName: string, safeKyOptions?: SafeKyOptions): Promise<void> {
+        await this.do({
+            method: "DELETE",
+            path: `/materializedviews/${materializedViewName}`,
             projectName,
             safeKyOptions,
         });

@@ -1,5 +1,6 @@
 import type { ParsedUrlQueryInput } from "node:querystring";
 import type { RequestConfig, SafeKyOptions } from "./type";
+import { Buffer } from "node:buffer";
 import { createHash, createHmac } from "node:crypto";
 import querystring from "node:querystring";
 import ky from "ky";
@@ -14,7 +15,7 @@ interface RequestOptions {
     method: "POST" | "GET" | "PUT" | "DELETE";
     path: string;
     queries?: Record<string, any>;
-    body?: Uint8Array;
+    body?: Uint8Array | string;
     headers?: Record<string, string>;
     projectName?: string;
     safeKyOptions?: SafeKyOptions;
@@ -53,8 +54,8 @@ export class Request {
             headers["x-acs-security-token"] = this.config.stsToken;
         }
 
-        if (options.body) {
-            headers["content-length"] = options.body.length.toString();
+        if (typeof options.body !== "undefined") {
+            headers["content-length"] = getBodyLength(options.body).toString();
             headers["content-md5"] = createHash("md5").update(options.body).digest("hex").toUpperCase();
         }
         headers.authorization = this.sign(options.method, formatResource(options.path, options.queries), headers);
@@ -107,6 +108,14 @@ export class Request {
 
         return `LOG ${this.config.accessKeyID}:${signature}`;
     }
+}
+
+function getBodyLength(body: Uint8Array | string): number {
+    if (typeof body === "string") {
+        return Buffer.byteLength(body);
+    }
+
+    return body.length;
 }
 
 function buildQueries(queries?: ParsedUrlQueryInput): string {
