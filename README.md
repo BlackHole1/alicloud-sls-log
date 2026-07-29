@@ -110,6 +110,8 @@ sls.updateCredentialProvider(createOIDCCredentialProviderFromEnv());
 `credentialProvider` accepts any `() => Credentials | Promise<Credentials>`. **It is called once per request**, so a custom provider must cache the credentials itself — otherwise every log write triggers a fresh round trip to your credential source. The `expiration` field on `Credentials` is informational only; the client never reads it to decide whether to reuse credentials.
 
 ```ts
+import { AliCloudSLSLog, type Credentials } from "alicloud-sls-log";
+
 let cached: Credentials | undefined;
 
 const sls = new AliCloudSLSLog({
