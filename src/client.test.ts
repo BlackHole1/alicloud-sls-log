@@ -6,7 +6,7 @@ import type {
     ListMaterializedViewsResponse,
     SafeKyOptions,
 } from "./type";
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { AliCloudSLSLog } from "./client";
 
 interface CapturedRequest {
@@ -39,7 +39,7 @@ class TestClient extends AliCloudSLSLog {
 }
 
 describe("AliCloudSLSLog materialized view", () => {
-    test("createMaterializedView 会调用官方创建接口", async () => {
+    test("createMaterializedView calls the official create endpoint", async () => {
         const client = new TestClient();
         const input: CreateMaterializedView = {
             name: "daily_usage_mv",
@@ -62,7 +62,7 @@ describe("AliCloudSLSLog materialized view", () => {
         });
     });
 
-    test("listMaterializedViews 会透传分页和模式过滤参数", async () => {
+    test("listMaterializedViews forwards pagination and filter parameters", async () => {
         const response: ListMaterializedViewsResponse = {
             count: 1,
             total: 10,
@@ -87,7 +87,7 @@ describe("AliCloudSLSLog materialized view", () => {
         });
     });
 
-    test("getMaterializedView 会请求单个物化视图详情", async () => {
+    test("getMaterializedView requests the details of a single materialized view", async () => {
         const response: GetMaterializedViewResponse = {
             name: "daily_usage_mv",
             logstore: "execution_log",
@@ -111,7 +111,7 @@ describe("AliCloudSLSLog materialized view", () => {
         });
     });
 
-    test("deleteMaterializedView 会调用删除接口", async () => {
+    test("deleteMaterializedView calls the delete endpoint", async () => {
         const client = new TestClient();
 
         await client.deleteMaterializedView("project-a", "daily_usage_mv", { timeout: 2000 });
@@ -127,7 +127,7 @@ describe("AliCloudSLSLog materialized view", () => {
 });
 
 describe("AliCloudSLSLog getLogsV2", () => {
-    test("getLogsV2 会调用官方 V2 查询接口", async () => {
+    test("getLogsV2 calls the official V2 query endpoint", async () => {
         const response: GetLogsV2Response<{ level: string }> = {
             meta: {
                 count: 1,
@@ -188,5 +188,50 @@ describe("AliCloudSLSLog getLogsV2", () => {
             }),
             safeKyOptions: { timeout: 6000 },
         });
+    });
+});
+
+describe("AliCloudSLSLog putLogs error propagation", () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+        globalThis.fetch = originalFetch;
+    });
+
+    test("putLogs rejects instead of resolving silently when credentials fail", async () => {
+        let fetched = false;
+        globalThis.fetch = (async (_input) => {
+            fetched = true;
+            return new Response("{}", { headers: { "content-type": "application/json" } });
+        }) as typeof fetch;
+
+        const sls = new AliCloudSLSLog({
+            endpoint: "cn-hangzhou.log.aliyuncs.com",
+            credentialProvider: () => {
+                throw new Error("OIDC token file not found");
+            },
+        });
+
+        await expect(sls.putLogs("project-a", "logstore-a", {
+            logs: [{ content: { message: "hello" } }],
+        })).rejects.toThrow("OIDC token file not found");
+        expect(fetched).toBe(false);
+    });
+
+    test("putLogs rejects when the server returns an error", async () => {
+        globalThis.fetch = (async _input => new Response(JSON.stringify({
+            errorCode: "Unauthorized",
+            errorMessage: "signature does not match",
+        }), { headers: { "content-type": "application/json" } })) as typeof fetch;
+
+        const sls = new AliCloudSLSLog({
+            accessKeyID: "test-ak",
+            accessKeySecret: "test-sk",
+            endpoint: "cn-hangzhou.log.aliyuncs.com",
+        });
+
+        await expect(sls.putLogs("project-a", "logstore-a", {
+            logs: [{ content: { message: "hello" } }],
+        })).rejects.toThrow("signature does not match");
     });
 });

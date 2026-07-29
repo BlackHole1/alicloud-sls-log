@@ -120,17 +120,43 @@ export interface GetLogsV2Response<T extends Record<string, any> = Record<string
     } & T>;
 }
 
-export interface AliCloudSLSLogOption {
+export interface Credentials {
     accessKeyID: string;
     accessKeySecret: string;
+    stsToken?: string;
+    /**
+     * Credential expiration, exposed purely as provider output.
+     * The client never reads it to decide whether to reuse credentials; caching and refreshing are up to the provider.
+     */
+    expiration?: Date | number | string;
+}
+
+/**
+ * Called once per request, so an implementation has to cache credentials itself,
+ * otherwise every log write triggers another round trip to the credential source.
+ * The built-in {@link https://github.com/BlackHole1/alicloud-sls-log#oidc-credentials OIDC provider} already caches and refreshes ahead of expiration.
+ */
+export type CredentialProvider = () => Credentials | Promise<Credentials>;
+
+interface BaseRequestConfig {
     endpoint: string;
     globalSafeKyOptions?: SafeKyOptions;
 }
 
-export interface RequestConfig {
-    endpoint: string;
+export interface StaticRequestConfig extends BaseRequestConfig {
     accessKeyID: string;
     accessKeySecret: string;
     stsToken?: string;
-    globalSafeKyOptions?: SafeKyOptions;
+    credentialProvider?: never;
 }
+
+export interface ProviderRequestConfig extends BaseRequestConfig {
+    credentialProvider: CredentialProvider;
+    accessKeyID?: never;
+    accessKeySecret?: never;
+    stsToken?: never;
+}
+
+export type RequestConfig = StaticRequestConfig | ProviderRequestConfig;
+
+export type AliCloudSLSLogOption = RequestConfig;

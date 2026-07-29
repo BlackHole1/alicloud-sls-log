@@ -82,7 +82,7 @@ export class AliCloudSLSLog extends Request {
 
         const body = LogGroupProto.encode(LogGroupProto.create(payload)).finish();
 
-        this.do({
+        await this.do({
             method: "POST",
             path: `/logstores/${logstoreName}/shards/lb`,
             headers: {
