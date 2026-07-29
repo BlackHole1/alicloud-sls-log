@@ -1,5 +1,5 @@
 import type { ParsedUrlQueryInput } from "node:querystring";
-import type { RequestConfig, SafeKyOptions } from "./type";
+import type { CredentialProvider, Credentials, RequestConfig, SafeKyOptions } from "./type";
 import { Buffer } from "node:buffer";
 import { createHash, createHmac } from "node:crypto";
 import querystring from "node:querystring";
@@ -33,16 +33,29 @@ export class AliCloudSLSLogError extends Error {
 }
 
 export class Request {
-    public constructor(private readonly config: RequestConfig) {
+    public constructor(private config: RequestConfig) {
     }
 
     public updateCredential(accessKeyID: string, accessKeySecret: string, stsToken?: string): void {
-        this.config.accessKeyID = accessKeyID;
-        this.config.accessKeySecret = accessKeySecret;
-        this.config.stsToken = stsToken;
+        this.config = {
+            endpoint: this.config.endpoint,
+            globalSafeKyOptions: this.config.globalSafeKyOptions,
+            accessKeyID,
+            accessKeySecret,
+            stsToken,
+        };
+    }
+
+    public updateCredentialProvider(credentialProvider: CredentialProvider): void {
+        this.config = {
+            endpoint: this.config.endpoint,
+            globalSafeKyOptions: this.config.globalSafeKyOptions,
+            credentialProvider,
+        };
     }
 
     protected async do(options: RequestOptions): Promise<any> {
+        const credentials = await this.getCredentials();
         const headers: Record<string, string> = Object.assign({
             "content-type": "application/json",
             "date": new Date().toUTCString(),
@@ -50,15 +63,15 @@ export class Request {
             "x-log-signaturemethod": "hmac-sha1",
         }, options.headers);
 
-        if (this.config.stsToken) {
-            headers["x-acs-security-token"] = this.config.stsToken;
+        if (credentials.stsToken) {
+            headers["x-acs-security-token"] = credentials.stsToken;
         }
 
         if (typeof options.body !== "undefined") {
             headers["content-length"] = getBodyLength(options.body).toString();
             headers["content-md5"] = createHash("md5").update(options.body).digest("hex").toUpperCase();
         }
-        headers.authorization = this.sign(options.method, formatResource(options.path, options.queries), headers);
+        headers.authorization = this.sign(options.method, formatResource(options.path, options.queries), headers, credentials);
 
         const url = `http://${buildProjectName(options.projectName)}${this.config.endpoint}${options.path}${buildQueries(options.queries)}`;
 
@@ -97,16 +110,28 @@ export class Request {
         return body;
     }
 
-    private sign(method: string, resource: string, headers: Record<string, string>): string {
+    private async getCredentials(): Promise<Credentials> {
+        if (this.config.credentialProvider) {
+            return await this.config.credentialProvider();
+        }
+
+        return {
+            accessKeyID: this.config.accessKeyID,
+            accessKeySecret: this.config.accessKeySecret,
+            stsToken: this.config.stsToken,
+        };
+    }
+
+    private sign(method: string, resource: string, headers: Record<string, string>, credentials: Credentials): string {
         const contentMD5 = headers["content-md5"] || "";
         const contentType = headers["content-type"] || "";
         const date = headers.date;
         const canonicalizedHeaders = getCanonicalizedHeaders(headers);
         const signString = `${method}\n${contentMD5}\n${contentType}\n`
             + `${date}\n${canonicalizedHeaders}\n${resource}`;
-        const signature = createHmac("sha1", this.config.accessKeySecret).update(signString).digest("base64");
+        const signature = createHmac("sha1", credentials.accessKeySecret).update(signString).digest("base64");
 
-        return `LOG ${this.config.accessKeyID}:${signature}`;
+        return `LOG ${credentials.accessKeyID}:${signature}`;
     }
 }
 

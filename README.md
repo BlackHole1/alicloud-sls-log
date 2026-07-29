@@ -50,6 +50,79 @@ const sls = new AliCloudSLSLog({
 });
 ```
 
+#### STS Credentials
+
+Pass an `stsToken` alongside the temporary AccessKey pair to authenticate with STS credentials:
+
+```ts
+const sls = new AliCloudSLSLog({
+    accessKeyID: "Your STS Access Key ID",
+    accessKeySecret: "Your STS Access Key Secret",
+    stsToken: "Your STS Security Token",
+    endpoint: "Your Endpoint",
+});
+```
+
+Rotate the credentials before they expire with `updateCredential()`:
+
+```ts
+sls.updateCredential("New Access Key ID", "New Access Key Secret", "New STS Security Token");
+```
+
+#### OIDC Credentials
+
+For long-running workloads, use an OIDC credential provider instead of passing one STS token at startup. The provider calls `AssumeRoleWithOIDC`, caches the returned STS credentials, and refreshes them before expiration. Concurrent refreshes are merged into a single STS request; if a refresh fails, the provider keeps serving the cached credentials while they are still valid and backs off for `refreshFailureBackoffSeconds` (default 60) before calling STS again.
+
+```ts
+import { AliCloudSLSLog, createOIDCCredentialProviderFromEnv } from "alicloud-sls-log";
+
+const sls = new AliCloudSLSLog({
+    endpoint: "Your Endpoint",
+    credentialProvider: createOIDCCredentialProviderFromEnv(),
+});
+```
+
+`createOIDCCredentialProviderFromEnv()` reads `ALIBABA_CLOUD_ROLE_ARN`, `ALIBABA_CLOUD_OIDC_PROVIDER_ARN`, and `ALIBABA_CLOUD_OIDC_TOKEN_FILE`. You can also pass explicit values:
+
+```ts
+import { AliCloudSLSLog, createOIDCCredentialProvider } from "alicloud-sls-log";
+
+const sls = new AliCloudSLSLog({
+    endpoint: "Your Endpoint",
+    credentialProvider: createOIDCCredentialProvider({
+        roleArn: "acs:ram::1234567890123456:role/example",
+        oidcProviderArn: "acs:ram::1234567890123456:oidc-provider/example",
+        oidcTokenFilePath: "/var/run/secrets/ack.alibabacloud.com/rrsa-tokens/token",
+        roleSessionName: "sls-worker",
+        refreshBeforeExpirationSeconds: 300,
+    }),
+});
+```
+
+An existing client can switch to a provider at any time with `updateCredentialProvider()`:
+
+```ts
+sls.updateCredentialProvider(createOIDCCredentialProviderFromEnv());
+```
+
+#### Custom Credential Providers
+
+`credentialProvider` accepts any `() => Credentials | Promise<Credentials>`. **It is called once per request**, so a custom provider must cache the credentials itself — otherwise every log write triggers a fresh round trip to your credential source. The `expiration` field on `Credentials` is informational only; the client never reads it to decide whether to reuse credentials.
+
+```ts
+let cached: Credentials | undefined;
+
+const sls = new AliCloudSLSLog({
+    endpoint: "Your Endpoint",
+    credentialProvider: async () => {
+        if (!cached || isAboutToExpire(cached)) {
+            cached = await fetchCredentialsFromSomewhere();
+        }
+        return cached;
+    },
+});
+```
+
 #### `putLogs()`
 
 Put logs to a specific logstore.
