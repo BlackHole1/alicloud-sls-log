@@ -42,6 +42,9 @@ interface OIDCCredentials extends Credentials {
 
 export class OIDCCredentialProvider {
     private credentials: OIDCCredentials | null = null;
+    // Kept next to the credentials rather than on them, so the object handed to callers
+    // stays exactly the public `Credentials` shape
+    private credentialsIssuedAt = 0;
     private refreshBlockedUntil = 0;
     private refreshPromise: Promise<Credentials> | null = null;
     private lastRefreshError: unknown = null;
@@ -160,6 +163,7 @@ export class OIDCCredentialProvider {
             expiration,
             stsToken: credentials.SecurityToken,
         };
+        this.credentialsIssuedAt = Date.now();
         this.refreshBlockedUntil = 0;
         this.lastRefreshError = null;
 
@@ -179,11 +183,20 @@ export class OIDCCredentialProvider {
     }
 
     private shouldRefresh(credentials: OIDCCredentials): boolean {
-        const refreshBeforeExpirationSeconds = Math.max(
+        const configured = Math.max(
             0,
             this.config.refreshBeforeExpirationSeconds ?? DEFAULT_REFRESH_BEFORE_EXPIRATION_SECONDS,
-        );
-        return credentials.expiration.getTime() - Date.now() <= refreshBeforeExpirationSeconds * 1000;
+        ) * 1000;
+
+        // STS silently clamps DurationSeconds to the role's max session duration, so the
+        // credentials we get back can be shorter-lived than the configured window. Left
+        // unclamped, freshly issued credentials would already be due for refresh and every
+        // call would hit STS again; capping the window at half the observed lifetime keeps
+        // the cache useful no matter how the window is configured.
+        const lifetime = credentials.expiration.getTime() - this.credentialsIssuedAt;
+        const window = Math.min(configured, Math.max(0, lifetime / 2));
+
+        return credentials.expiration.getTime() - Date.now() <= window;
     }
 
     private isExpired(credentials: OIDCCredentials): boolean {

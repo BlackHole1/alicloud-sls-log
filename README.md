@@ -71,7 +71,7 @@ sls.updateCredential("New Access Key ID", "New Access Key Secret", "New STS Secu
 
 #### OIDC Credentials
 
-For long-running workloads, use an OIDC credential provider instead of passing one STS token at startup. The provider calls `AssumeRoleWithOIDC`, caches the returned STS credentials, and refreshes them before expiration. Concurrent refreshes are merged into a single STS request; if a refresh fails, the provider keeps serving the cached credentials while they are still valid and backs off for `refreshFailureBackoffSeconds` (default 60) before calling STS again.
+For long-running workloads, use an OIDC credential provider instead of passing one STS token at startup. The provider calls `AssumeRoleWithOIDC`, caches the returned STS credentials, and refreshes them before expiration. Concurrent refreshes are merged into a single STS request; if a refresh fails, the provider keeps serving the cached credentials while they are still valid and backs off for `refreshFailureBackoffSeconds` (default 60) before calling STS again. `refreshBeforeExpirationSeconds` (default 300) is capped at half of the lifetime the credentials actually came back with — STS clamps `durationSeconds` to the role's maximum session duration, and without that cap a window wider than the lifetime would make every request refresh again.
 
 ```ts
 import { AliCloudSLSLog, createOIDCCredentialProviderFromEnv } from "alicloud-sls-log";

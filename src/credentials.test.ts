@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import { createOIDCCredentialProvider, createOIDCCredentialProviderFromEnv, OIDCCredentialProvider } from "./credentials";
 
 const ENV_KEYS = [
@@ -12,6 +12,10 @@ const ENV_KEYS = [
     "ALIBABA_CLOUD_ROLE_SESSION_NAME",
     "ALIBABA_CLOUD_STS_ENDPOINT",
 ] as const;
+
+// Refresh decisions are pure clock arithmetic, so the tests drive the clock instead of
+// leaning on wall-time margins
+const T0 = Date.parse("2030-01-01T00:00:00Z");
 
 describe("OIDC credential provider", () => {
     test("exchanges an OIDC token for STS credentials", async () => {
@@ -213,11 +217,11 @@ describe("OIDC credential provider", () => {
             return createSTSResponse({
                 accessKeyID: `access-key-id-${hits}`,
                 accessKeySecret: `access-key-secret-${hits}`,
-                // Always inside the refresh window, so every later call takes the refresh branch
-                expiration: new Date(Date.now() + 60_000),
+                expiration: new Date(Date.now() + 100_000),
                 stsToken: `security-token-${hits}`,
             });
         });
+        setSystemTime(new Date(T0));
 
         try {
             const provider = new OIDCCredentialProvider({
@@ -232,7 +236,11 @@ describe("OIDC credential provider", () => {
             // If finally cleared refreshPromise unconditionally, the second waiter would drop that new refresh,
             // and the next call would start a third concurrent AssumeRoleWithOIDC
             const inFlight = Reflect.get(provider, "refreshPromise") as Promise<unknown>;
-            const middle = inFlight.then(() => provider.getCredentials());
+            const middle = inFlight.then(() => {
+                // A 100s lifetime clamps the window to 50s, so at 60s in the cache is due for refresh
+                setSystemTime(new Date(T0 + 60_000));
+                return provider.getCredentials();
+            });
             const second = provider.getCredentials();
 
             await second;
@@ -243,6 +251,7 @@ describe("OIDC credential provider", () => {
         }
         finally {
             restoreFetch();
+            setSystemTime();
         }
     });
 
@@ -252,8 +261,8 @@ describe("OIDC credential provider", () => {
         const restoreFetch = mockSTSFetch((params) => {
             hits += 1;
             requests.push(params);
-            // The first credentials land inside the 300s refresh window, the second well outside it
-            const expiresIn = hits === 1 ? 60_000 : 3600_000;
+            // 100s first, then an hour, clamping the window to 50s and 300s respectively
+            const expiresIn = hits === 1 ? 100_000 : 3600_000;
             return createSTSResponse({
                 accessKeyID: `access-key-id-${hits}`,
                 accessKeySecret: `access-key-secret-${hits}`,
@@ -261,6 +270,7 @@ describe("OIDC credential provider", () => {
                 stsToken: `security-token-${hits}`,
             });
         });
+        setSystemTime(new Date(T0));
 
         try {
             const credentialProvider = createOIDCCredentialProvider({
@@ -271,11 +281,17 @@ describe("OIDC credential provider", () => {
             });
 
             const first = await credentialProvider();
+            const stillCached = await credentialProvider();
+            expect(hits).toBe(1);
+
+            // 40s of the 100s lifetime left, inside the clamped 50s window
+            setSystemTime(new Date(T0 + 60_000));
             const second = await credentialProvider();
             const cached = await credentialProvider();
 
             expect(hits).toBe(2);
             expect(first.accessKeyID).toBe("access-key-id-1");
+            expect(stillCached.accessKeyID).toBe("access-key-id-1");
             expect(second.accessKeyID).toBe("access-key-id-2");
             expect(cached.accessKeyID).toBe("access-key-id-2");
             // SignatureNonce guards against replay, so reusing one value gets rejected by STS
@@ -283,6 +299,50 @@ describe("OIDC credential provider", () => {
         }
         finally {
             restoreFetch();
+            setSystemTime();
+        }
+    });
+
+    test("a refresh window wider than the credential lifetime still serves the cache", async () => {
+        let hits = 0;
+        const restoreFetch = mockSTSFetch(() => {
+            hits += 1;
+            return createSTSResponse({
+                accessKeyID: `access-key-id-${hits}`,
+                accessKeySecret: `access-key-secret-${hits}`,
+                // STS clamps DurationSeconds to the role's max session duration, so the
+                // lifetime handed back can be far shorter than the configured window
+                expiration: new Date(Date.now() + 900_000),
+                stsToken: `security-token-${hits}`,
+            });
+        });
+        setSystemTime(new Date(T0));
+
+        try {
+            const credentialProvider = createOIDCCredentialProvider({
+                oidcProviderArn: "provider",
+                oidcToken: "oidc-token",
+                // 30 minutes, more than twice the 15-minute lifetime STS actually returns
+                refreshBeforeExpirationSeconds: 1800,
+                roleArn: "role",
+                stsEndpoint: "https://sts.example.com",
+            });
+
+            for (let i = 0; i < 20; i += 1) {
+                await credentialProvider();
+            }
+
+            // Without the clamp every one of these calls would have hit AssumeRoleWithOIDC
+            expect(hits).toBe(1);
+
+            // Capped at half the lifetime, so the refresh still lands well before expiry
+            setSystemTime(new Date(T0 + 500_000));
+            await credentialProvider();
+            expect(hits).toBe(2);
+        }
+        finally {
+            restoreFetch();
+            setSystemTime();
         }
     });
 
@@ -293,11 +353,12 @@ describe("OIDC credential provider", () => {
             return createSTSResponse({
                 accessKeyID: `access-key-id-${hits}`,
                 accessKeySecret: `access-key-secret-${hits}`,
-                // A 400s lifetime: inside the custom 600s window, outside the default 300s one
-                expiration: new Date(Date.now() + 400_000),
+                // A 2000s lifetime, so the 1000s clamp binds neither window under test
+                expiration: new Date(Date.now() + 2_000_000),
                 stsToken: `security-token-${hits}`,
             });
         });
+        setSystemTime(new Date(T0));
 
         try {
             const widened = createOIDCCredentialProvider({
@@ -308,10 +369,13 @@ describe("OIDC credential provider", () => {
                 stsEndpoint: "https://sts.example.com",
             });
             await widened();
+            // 500s left: inside the configured 600s window, outside the default 300s one
+            setSystemTime(new Date(T0 + 1_500_000));
             await widened();
             expect(hits).toBe(2);
 
             hits = 0;
+            setSystemTime(new Date(T0));
             const byDefault = createOIDCCredentialProvider({
                 oidcProviderArn: "provider",
                 oidcToken: "oidc-token",
@@ -319,11 +383,13 @@ describe("OIDC credential provider", () => {
                 stsEndpoint: "https://sts.example.com",
             });
             await byDefault();
+            setSystemTime(new Date(T0 + 1_500_000));
             await byDefault();
             expect(hits).toBe(1);
         }
         finally {
             restoreFetch();
+            setSystemTime();
         }
     });
 
@@ -339,11 +405,11 @@ describe("OIDC credential provider", () => {
             return createSTSResponse({
                 accessKeyID: "access-key-id",
                 accessKeySecret: "access-key-secret",
-                // Inside the 300s refresh window but not expired yet, so the next call refreshes and then falls back
-                expiration: new Date(Date.now() + 60_000),
+                expiration: new Date(Date.now() + 100_000),
                 stsToken: "security-token",
             });
         });
+        setSystemTime(new Date(T0));
 
         try {
             const credentialProvider = createOIDCCredentialProvider({
@@ -356,6 +422,8 @@ describe("OIDC credential provider", () => {
             const first = await credentialProvider();
             expect(attempts).toBe(1);
 
+            // 40s of the 100s lifetime left: due for a refresh, still usable as a fallback
+            setSystemTime(new Date(T0 + 60_000));
             failing = true;
             const fallback = await credentialProvider();
             // 503 is one of ky's retriable status codes, so a single refresh is 1 initial call plus 2 retries
@@ -371,6 +439,7 @@ describe("OIDC credential provider", () => {
         }
         finally {
             restoreFetch();
+            setSystemTime();
         }
     });
 
